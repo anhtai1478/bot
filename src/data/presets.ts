@@ -83,7 +83,7 @@ export const DEFAULT_CUSTOM_COMMANDS: CustomCommand[] = [
     responseText: 'Kênh thông tin chính thức',
     embedData: {
       title: '🌐 KÊNH KẾT NỐI CHÍNH THỨC',
-      description: '🔹 **Fanpage Facebook:** https://facebook.com\n🔹 **Kênh YouTube:** https://youtube.com\n🔹 **TikTok:** https://tiktok.com\n🔹 **Website Server:** https://myserver.vn',
+      description: '🔹 **Facebook dev :** https://www.facebook.com/taianh198/?locale=vi_VN🔹 **Kênh YouTube:** https://youtube.com\n🔹 **TikTok:** https://tiktok.com\n🔹 ',
       color: '#00D26A',
       footer: 'Bấm theo dõi để nhận thông báo giải đấu & sự kiện!',
     },
@@ -110,4 +110,5 @@ export const DEFAULT_CUSTOM_COMMANDS: CustomCommand[] = [
     cooldownSeconds: 5,
     enabled: true,
   },
+  
 ];
