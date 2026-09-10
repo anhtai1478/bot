@@ -216,6 +216,155 @@ app.post('/api/bot/test-token', async (req, res) => {
   }
 });
 
+async function startDiscordBot(token: string, prefix: string = '!', stay247: boolean = true, defaultVoiceChannel?: string) {
+  if (!token) {
+    throw new Error('Chưa nhập Bot Token!');
+  }
+
+  if (botState.client) {
+    try { await botState.client.destroy(); } catch {}
+    botState.client = null;
+  }
+
+  addLog('info', 'Đang kết nối đến Discord Gateway với token cung cấp...', 'gateway');
+
+  const client = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildVoiceStates,
+      GatewayIntentBits.GuildMembers
+    ],
+    partials: [Partials.Channel, Partials.Message]
+  });
+
+  client.once('ready', () => {
+    botState.isRunning = true;
+    botState.isDemoMode = false;
+    botState.startTime = Date.now();
+    botState.prefix = prefix || '!';
+    botState.stay247 = stay247 !== false;
+
+    client.user?.setActivity('24/7 Music & Moderation | !help', { type: ActivityType.Listening });
+
+    addLog('success', `Đăng nhập thành công với bot: ${client.user?.tag}`, 'gateway');
+    addLog('info', `Đang trực tuyến trên ${client.guilds.cache.size} máy chủ Discord.`, 'system');
+
+    if (defaultVoiceChannel) {
+      addLog('info', `Thiết lập kênh voice 24/7: ${defaultVoiceChannel}`, 'voice');
+    }
+  });
+
+  client.on('messageCreate', async (message) => {
+    if (message.author.bot || !message.guild || !message.content.startsWith(botState.prefix)) return;
+
+    const args = message.content.slice(botState.prefix.length).trim().split(/ +/);
+    const command = args.shift()?.toLowerCase();
+    if (!command) return;
+
+    addLog('cmd', `Lệnh thực thi: [${botState.prefix}${command}] bởi ${message.author.tag} tại #${(message.channel as any).name || 'DM'}`, 'moderation');
+
+    const customCmd = botState.customCommands.find(c => c.enabled && c.name.toLowerCase() === command);
+    if (customCmd) {
+      if (customCmd.responseType === 'embed' && customCmd.embedData) {
+        const embed = new EmbedBuilder()
+          .setTitle(customCmd.embedData.title || customCmd.name)
+          .setDescription(customCmd.embedData.description || '')
+          .setColor((customCmd.embedData.color as any) || '#5865F2');
+        if (customCmd.embedData.footer) {
+          embed.setFooter({ text: customCmd.embedData.footer });
+        }
+        await message.reply({ embeds: [embed] });
+      } else {
+        await message.reply(customCmd.responseText || 'Lệnh tùy chỉnh');
+      }
+      return;
+    }
+
+    if (command === 'ping') {
+      await message.reply(`🏓 Pong! Độ trễ WebSocket: **${Math.round(client.ws.ping)}ms** | Bot trực tuyến 24/7.`);
+    } else if (command === 'join') {
+      const voiceChannel = message.member?.voice.channel;
+      if (!voiceChannel) {
+        return message.reply('❌ Bạn cần vào kênh thoại trước rồi mới dùng lệnh `!join`!');
+      }
+
+      try {
+        if (botState.targetVoiceChannel?.id !== voiceChannel.id) {
+          botState.targetVoiceChannel = {
+            id: voiceChannel.id,
+            name: voiceChannel.name,
+            guildName: message.guild.name
+          };
+        }
+
+        joinVoiceChannel({
+          channelId: voiceChannel.id,
+          guildId: voiceChannel.guild.id,
+          adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+          selfDeaf: true,
+          selfMute: false
+        });
+
+        addLog('success', `Bot đã vào phòng thoại: ${voiceChannel.name}`, 'voice');
+        await message.reply(`✅ Bot đã vào phòng **${voiceChannel.name}** của bạn.`);
+      } catch (error: any) {
+        addLog('error', `Không thể vào phòng thoại: ${error.message}`, 'voice');
+        await message.reply('❌ Không thể vào phòng thoại lúc này. Hãy thử lại sau.');
+      }
+    } else if (command === '247' || command === 'treo') {
+      const voiceChannel = message.member?.voice.channel;
+      if (!voiceChannel) {
+        return message.reply('❌ Bạn cần vào kênh thoại trước để kích hoạt chế độ 24/7!');
+      }
+      botState.stay247 = true;
+      botState.targetVoiceChannel = {
+        id: voiceChannel.id,
+        name: voiceChannel.name,
+        guildName: message.guild.name
+      };
+      addLog('success', `Kích hoạt 24/7 tại kênh voice: ${voiceChannel.name}`, 'voice');
+      const embed = new EmbedBuilder()
+        .setColor('#00D26A')
+        .setTitle('🟢 Chế độ 24/7 ĐÃ BẬT!')
+        .setDescription(`Bot đã khóa kênh **${voiceChannel.name}** và sẽ duy trì kết nối 24/7 ngay cả khi phòng trống.`);
+      await message.reply({ embeds: [embed] });
+    } else if (command === 'serverinfo') {
+      const embed = new EmbedBuilder()
+        .setColor('#5865F2')
+        .setTitle(`📊 Server: ${message.guild.name}`)
+        .addFields(
+          { name: '👑 Chủ phòng', value: `<@${message.guild.ownerId}>`, inline: true },
+          { name: '👥 Thành viên', value: `${message.guild.memberCount}`, inline: true },
+          { name: '📅 Tạo ngày', value: message.guild.createdAt.toLocaleDateString('vi-VN'), inline: true }
+        );
+      await message.reply({ embeds: [embed] });
+    }
+  });
+
+  client.on('error', (err) => {
+    addLog('error', `Lỗi Discord Client: ${err.message}`, 'gateway');
+  });
+
+  await client.login(token.trim());
+  botState.client = client;
+  botState.token = token.trim();
+  botState.isRunning = true;
+  botState.prefix = prefix || '!';
+  botState.stay247 = stay247 !== false;
+
+  if (defaultVoiceChannel) {
+    botState.targetVoiceChannel = {
+      id: defaultVoiceChannel,
+      name: defaultVoiceChannel,
+      guildName: 'Auto Start'
+    };
+  }
+
+  return client;
+}
+
 // Start the Discord Bot
 app.post('/api/bot/start', async (req, res) => {
   const { token, prefix, isDemo, stay247, defaultVoiceChannel } = req.body;
@@ -258,141 +407,7 @@ app.post('/api/bot/start', async (req, res) => {
   }
 
   try {
-    // If an existing client was running, destroy it first
-    if (botState.client) {
-      try { await botState.client.destroy(); } catch {}
-      botState.client = null;
-    }
-
-    addLog('info', 'Đang kết nối đến Discord Gateway với token cung cấp...', 'gateway');
-
-    const client = new Client({
-      intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.GuildMembers
-      ],
-      partials: [Partials.Channel, Partials.Message]
-    });
-
-    client.once('ready', () => {
-      botState.isRunning = true;
-      botState.isDemoMode = false;
-      botState.startTime = Date.now();
-      botState.prefix = prefix || '!';
-      botState.stay247 = stay247 !== false;
-
-      client.user?.setActivity('24/7 Music & Moderation | !help', { type: ActivityType.Listening });
-
-      addLog('success', `Đăng nhập thành công với bot: ${client.user?.tag}`, 'gateway');
-      addLog('info', `Đang trực tuyến trên ${client.guilds.cache.size} máy chủ Discord.`, 'system');
-
-      if (defaultVoiceChannel) {
-        addLog('info', `Thiết lập kênh voice 24/7: ${defaultVoiceChannel}`, 'voice');
-      }
-    });
-
-    // Handle incoming chat messages
-    client.on('messageCreate', async (message) => {
-      if (message.author.bot || !message.guild || !message.content.startsWith(botState.prefix)) return;
-
-      const args = message.content.slice(botState.prefix.length).trim().split(/ +/);
-      const command = args.shift()?.toLowerCase();
-      if (!command) return;
-
-      addLog('cmd', `Lệnh thực thi: [${botState.prefix}${command}] bởi ${message.author.tag} tại #${(message.channel as any).name || 'DM'}`, 'moderation');
-
-      // Check custom commands first
-      const customCmd = botState.customCommands.find(c => c.enabled && c.name.toLowerCase() === command);
-      if (customCmd) {
-        if (customCmd.responseType === 'embed' && customCmd.embedData) {
-          const embed = new EmbedBuilder()
-            .setTitle(customCmd.embedData.title || customCmd.name)
-            .setDescription(customCmd.embedData.description || '')
-            .setColor((customCmd.embedData.color as any) || '#5865F2');
-          if (customCmd.embedData.footer) {
-            embed.setFooter({ text: customCmd.embedData.footer });
-          }
-          await message.reply({ embeds: [embed] });
-        } else {
-          await message.reply(customCmd.responseText || 'Lệnh tùy chỉnh');
-        }
-        return;
-      }
-
-      // Built-in commands
-      if (command === 'ping') {
-        await message.reply(`🏓 Pong! Độ trễ WebSocket: **${Math.round(client.ws.ping)}ms** | Bot trực tuyến 24/7.`);
-      } else if (command === 'join') {
-        const voiceChannel = message.member?.voice.channel;
-        if (!voiceChannel) {
-          return message.reply('❌ Bạn cần vào kênh thoại trước rồi mới dùng lệnh `!join`!');
-        }
-
-        try {
-          if (botState.targetVoiceChannel?.id !== voiceChannel.id) {
-            botState.targetVoiceChannel = {
-              id: voiceChannel.id,
-              name: voiceChannel.name,
-              guildName: message.guild.name
-            };
-          }
-
-          joinVoiceChannel({
-            channelId: voiceChannel.id,
-            guildId: voiceChannel.guild.id,
-            adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-            selfDeaf: true,
-            selfMute: false
-          });
-
-          addLog('success', `Bot đã vào phòng thoại: ${voiceChannel.name}`, 'voice');
-          await message.reply(`✅ Bot đã vào phòng **${voiceChannel.name}** của bạn.`);
-        } catch (error: any) {
-          addLog('error', `Không thể vào phòng thoại: ${error.message}`, 'voice');
-          await message.reply('❌ Không thể vào phòng thoại lúc này. Hãy thử lại sau.');
-        }
-      } else if (command === '247' || command === 'treo') {
-        const voiceChannel = message.member?.voice.channel;
-        if (!voiceChannel) {
-          return message.reply('❌ Bạn cần vào kênh thoại trước để kích hoạt chế độ 24/7!');
-        }
-        botState.stay247 = true;
-        botState.targetVoiceChannel = {
-          id: voiceChannel.id,
-          name: voiceChannel.name,
-          guildName: message.guild.name
-        };
-        addLog('success', `Kích hoạt 24/7 tại kênh voice: ${voiceChannel.name}`, 'voice');
-        const embed = new EmbedBuilder()
-          .setColor('#00D26A')
-          .setTitle('🟢 Chế độ 24/7 ĐÃ BẬT!')
-          .setDescription(`Bot đã khóa kênh **${voiceChannel.name}** và sẽ duy trì kết nối 24/7 ngay cả khi phòng trống.`);
-        await message.reply({ embeds: [embed] });
-      } else if (command === 'serverinfo') {
-        const embed = new EmbedBuilder()
-          .setColor('#5865F2')
-          .setTitle(`📊 Server: ${message.guild.name}`)
-          .addFields(
-            { name: '👑 Chủ phòng', value: `<@${message.guild.ownerId}>`, inline: true },
-            { name: '👥 Thành viên', value: `${message.guild.memberCount}`, inline: true },
-            { name: '📅 Tạo ngày', value: message.guild.createdAt.toLocaleDateString('vi-VN'), inline: true }
-          );
-        await message.reply({ embeds: [embed] });
-      }
-    });
-
-    client.on('error', (err) => {
-      addLog('error', `Lỗi Discord Client: ${err.message}`, 'gateway');
-    });
-
-    await client.login(token.trim());
-    botState.client = client;
-    botState.token = token.trim();
-    botState.isRunning = true;
-
+    await startDiscordBot(token, prefix || '!', stay247 !== false, defaultVoiceChannel);
     return res.json({ success: true });
   } catch (err: any) {
     addLog('error', `Không thể đăng nhập Discord Bot: ${err.message}`, 'gateway');
@@ -733,6 +748,17 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Máy chủ Discord Bot Hub đang chạy tại: http://localhost:${PORT}`);
   });
+
+  const autoToken = process.env.DISCORD_BOT_TOKEN || process.env.BOT_TOKEN || process.env.DISCORD_TOKEN;
+  if (autoToken) {
+    startDiscordBot(autoToken, process.env.DISCORD_PREFIX || '!', true, process.env.DEFAULT_VOICE_CHANNEL)
+      .then(() => {
+        console.log('🤖 Bot Discord đã tự động khởi động từ biến môi trường.');
+      })
+      .catch((err) => {
+        console.error('❌ Không thể tự động khởi động bot:', err.message);
+      });
+  }
 }
 
 startServer();
