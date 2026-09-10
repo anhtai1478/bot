@@ -9,6 +9,7 @@ import {
   EmbedBuilder,
   PermissionsBitField
 } from 'discord.js';
+import { joinVoiceChannel } from '@discordjs/voice';
 import JSZip from 'jszip';
 import { DEFAULT_CUSTOM_COMMANDS, RADIO_PRESETS } from './src/data/presets.ts';
 import {
@@ -324,6 +325,35 @@ app.post('/api/bot/start', async (req, res) => {
       // Built-in commands
       if (command === 'ping') {
         await message.reply(`🏓 Pong! Độ trễ WebSocket: **${Math.round(client.ws.ping)}ms** | Bot trực tuyến 24/7.`);
+      } else if (command === 'join') {
+        const voiceChannel = message.member?.voice.channel;
+        if (!voiceChannel) {
+          return message.reply('❌ Bạn cần vào kênh thoại trước rồi mới dùng lệnh `!join`!');
+        }
+
+        try {
+          if (botState.targetVoiceChannel?.id !== voiceChannel.id) {
+            botState.targetVoiceChannel = {
+              id: voiceChannel.id,
+              name: voiceChannel.name,
+              guildName: message.guild.name
+            };
+          }
+
+          joinVoiceChannel({
+            channelId: voiceChannel.id,
+            guildId: voiceChannel.guild.id,
+            adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+            selfDeaf: true,
+            selfMute: false
+          });
+
+          addLog('success', `Bot đã vào phòng thoại: ${voiceChannel.name}`, 'voice');
+          await message.reply(`✅ Bot đã vào phòng **${voiceChannel.name}** của bạn.`);
+        } catch (error: any) {
+          addLog('error', `Không thể vào phòng thoại: ${error.message}`, 'voice');
+          await message.reply('❌ Không thể vào phòng thoại lúc này. Hãy thử lại sau.');
+        }
       } else if (command === '247' || command === 'treo') {
         const voiceChannel = message.member?.voice.channel;
         if (!voiceChannel) {
