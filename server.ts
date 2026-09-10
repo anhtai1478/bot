@@ -283,7 +283,7 @@ async function startDiscordBot(token: string, prefix: string = '!', stay247: boo
     }
 
     if (command === 'ping') {
-      await message.reply(`🏓 Pong! Độ trễ WebSocket: **${Math.round(client.ws.ping)}ms** | Bot trực tuyến 24/7.`);
+      await message.reply(`🏓 Pong! Độ trễ WebSocket: **${Math.round(client.ws.ping)}ms** | Bot trực tuyến (Tài Anh).`);
     } else if (command === 'join') {
       const voiceChannel = message.member?.voice.channel;
       if (!voiceChannel) {
