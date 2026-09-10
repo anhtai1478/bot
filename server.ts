@@ -1,6 +1,5 @@
 import express from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { 
   Client, 
@@ -22,7 +21,7 @@ import {
   STANDALONE_README_MD
 } from './src/data/botSource.ts';
 
-const __filename = fileURLToPath(import.meta.url);
+const __filename = typeof __filename !== 'undefined' ? __filename : process.argv[1] || process.cwd();
 const __dirname = path.dirname(__filename);
 
 const app = express();
