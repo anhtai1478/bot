@@ -1,0 +1,6 @@
+{
+  "name": "Discord 24/7 YouTube Music & Server Bot",
+  "description": "Trung tâm quản lý, vận hành và xuất mã nguồn Discord Bot 24/7 phát nhạc YouTube liên tục khi phòng trống, hỗ trợ lệnh quản trị và tùy chỉnh lệnh.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
